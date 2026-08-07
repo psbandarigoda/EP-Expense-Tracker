@@ -3,7 +3,8 @@ import "./brand.css";
 
 export const metadata = {
   title: "Entertain Passport Balance Sheet",
-  description: "nZO x Liyanawicky collaboration ledger"
+  description: "nZO x Liyanawicky collaboration ledger",
+  icons: { icon: "/logo.png", shortcut: "/logo.png", apple: "/logo.png" }
 };
 
 export default function RootLayout({ children }) {

@@ -661,5 +661,45 @@ where id !~ '^TXN-[0-9]{8}-[A-F0-9]{8}$';
 do $$ declare r record; begin for r in select id from transactions loop perform sync_transaction_journal(r.id); end loop; end $$;
 grant execute on function public.sync_transaction_journal(text) to authenticated;
 
+-- ===== FOUNDER-TO-FOUNDER SETTLEMENTS =====
+-- Direct personal payments founders make to each other (e.g. cash or a bank
+-- transfer straight from one director to the other) to true up the informal
+-- 50/50 allocation shown on the dashboard. This never touches company cash,
+-- income or expense accounts and is not part of nZO's statutory books.
+create table if not exists public.founder_settlements (
+  id uuid primary key default gen_random_uuid(),
+  settlement_date date not null default current_date,
+  from_founder_id uuid not null references public.founders(id),
+  to_founder_id uuid not null references public.founders(id),
+  amount numeric(14,2) not null check (amount > 0),
+  method text not null default 'Bank Transfer',
+  reference_no text not null default '',
+  notes text not null default '',
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  check (from_founder_id <> to_founder_id)
+);
+
+alter table public.founder_settlements enable row level security;
+drop policy if exists "Staff read founder settlements" on public.founder_settlements;
+drop policy if exists "Super admins manage founder settlements" on public.founder_settlements;
+create policy "Staff read founder settlements" on public.founder_settlements for select to authenticated using(is_active_staff());
+create policy "Super admins manage founder settlements" on public.founder_settlements for all to authenticated
+using(exists(select 1 from profiles where id=auth.uid() and is_active and role='super_admin'))
+with check(exists(select 1 from profiles where id=auth.uid() and is_active and role='super_admin'));
+
+drop trigger if exists founder_settlements_audit on public.founder_settlements;
+create trigger founder_settlements_audit after insert or update or delete on public.founder_settlements
+for each row execute function public.audit_accounting_change();
+
+create or replace view public.founder_settlement_activity with (security_invoker=true) as
+select s.id,s.settlement_date,s.amount,s.method,s.reference_no,s.notes,s.created_at,
+  ff.full_name as from_founder,ft.full_name as to_founder,s.from_founder_id,s.to_founder_id
+from public.founder_settlements s
+join public.founders ff on ff.id=s.from_founder_id
+join public.founders ft on ft.id=s.to_founder_id
+order by s.settlement_date desc,s.created_at desc;
+
+grant select on public.founder_settlement_activity to authenticated;
 
 commit;

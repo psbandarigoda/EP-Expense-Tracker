@@ -9,6 +9,7 @@ Internal company books for **nZO Innovations**, operator of Entertain Passport. 
 - nZO-specific Chart of Accounts covering platform revenue, operating costs, assets and liabilities
 - Cash/bank account, counterparty, reference, tax/WHT and proof tracking
 - Monthly management P&L, account breakdown and CSV export
+- Founder-to-founder settlement tracking for the informal 50/50 split, kept separate from company cash and statutory books
 - Immutable audit log for transaction inserts, updates and voids
 - Existing transaction IDs and amounts retained and backfilled into the Chart of Accounts
 
