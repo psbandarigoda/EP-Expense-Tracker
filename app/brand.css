@@ -119,7 +119,10 @@ input:focus, select:focus, textarea:focus { border-color: #9e2bea; box-shadow: 0
 .category-regex[aria-pressed="true"] { background: #eee0fc; color: #7721b1; box-shadow: inset 0 0 0 1px #b777db; }
 .category-hint, .category-error { margin: 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
 .category-error { color: var(--red); }
-.category-dropdown { position: absolute; z-index: 20; top: 70px; left: 0; right: 0; border: 1px solid #dccbe7; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 16px 40px #2e0e4826; }
+.category-help { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.category-browse { flex-shrink: 0; padding: 0; border-radius: 0; background: transparent; color: #8236ab; box-shadow: none; font-size: 11px; line-height: 1.5; }
+.category-browse:hover { text-decoration: underline; }
+.category-dropdown { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0; border: 1px solid #dccbe7; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 16px 40px #2e0e4826; }
 .category-result-count { padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--muted); background: #fbf8fd; font-size: 11px; }
 .category-results { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 .category-result { display: grid; gap: 5px; width: 100%; padding: 13px 14px; border-radius: 0; border-bottom: 1px solid var(--line); text-align: left; color: var(--ink); background: #fff; box-shadow: none; font-weight: 400; }
@@ -129,6 +132,7 @@ input:focus, select:focus, textarea:focus { border-color: #9e2bea; box-shadow: 0
 .category-description { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .category-result-meta { font-size: 11px; color: #8236ab; }
 .category-no-results { margin: 0; padding: 16px 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.category-no-results p { margin: 0; }
 .category-entry-choices { border: 1px solid #dccbe7; padding: 16px; border-radius: 12px; background: #fcf9ff; }
 .category-entry-choices h3 { margin: 0 0 8px; font-size: 15px; }
 .category-entry-choices p { margin: 0 0 12px; font-size: 12px; line-height: 1.6; color: var(--muted); }
