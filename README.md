@@ -48,13 +48,18 @@ npm install
 npm run dev
 ```
 
-For a new entry, start with **Category / subcategory**. Results update as you
-type and search every account type. Multiple words can appear in any order;
+New entries start with no entry type selected and show all subcategories.
+Choosing an **Entry type** filters the category results and available count to
+that type. Select the empty **Select entry type** option again to clear the type
+and show every category. A category picked under a selected type fills directly;
+with no type selected, categories supporting multiple types offer a chooser.
+
+In **Category / subcategory**, results update as you type. Multiple words can appear in any order;
 enable **Regex** for patterns such as `domain|cloud` or `^50`. Choose a category,
 then choose its entry type if more than one is supported. The form fills both
 fields together and requires a valid category/type combination before posting.
-Use **Browse all** to reopen the complete category list and clear search or regex
-filters. The picker also shows how many categories are available.
+Use **Browse all** to reopen the category list for the selected entry type and
+clear search or regex filters. Without a type selected, it shows every category.
 
 Run `npm test` for the category search and entry-type compatibility checks.
 

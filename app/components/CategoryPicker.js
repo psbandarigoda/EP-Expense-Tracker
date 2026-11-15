@@ -12,14 +12,21 @@ export default function CategoryPicker({ accounts, value, entryType, onSelect })
   const [pendingCode, setPendingCode] = useState("");
   const selected = accounts.find(account => account.code === value);
   const pending = accounts.find(account => account.code === pendingCode);
-  const { results, error } = useMemo(() => searchCategories(accounts, query, { regex }), [accounts, query, regex]);
-  const availableCount = useMemo(() => searchCategories(accounts, "").results.length, [accounts]);
+  const { results, error } = useMemo(() => searchCategories(accounts, query, { regex, entryType }), [accounts, query, regex, entryType]);
+  const availableCount = useMemo(() => searchCategories(accounts, "", { entryType }).results.length, [accounts, entryType]);
   const pendingChoices = getEntryTypeChoices(pending);
   const label = account => `${account.code} · ${account.name}`;
 
   useEffect(() => {
     if (value) { setQuery(""); setPendingCode(""); setOpen(false); }
   }, [value]);
+  useEffect(() => {
+    setQuery("");
+    setRegex(false);
+    setPendingCode("");
+    setActiveIndex(0);
+    setOpen(false);
+  }, [entryType]);
   useEffect(() => {
     inputRef.current?.setCustomValidity(selected ? "" : pending ? "Choose an entry type for this category." : "Choose a category from the search results.");
   }, [selected, pending]);
@@ -87,7 +94,7 @@ export default function CategoryPicker({ accounts, value, entryType, onSelect })
       <button type="button" className="category-regex" aria-pressed={regex} onClick={() => { setRegex(!regex); setActiveIndex(0); if (!pending) setOpen(true); }} title="Match a regular expression">Regex</button>
     </div>
     <div className="category-help">
-      <p className="category-hint" id={`${id}-hint`}>{selected ? `Selected entry type: ${entryType}` : `${availableCount} categories available. Search, then choose an entry type.`}</p>
+      <p className="category-hint" id={`${id}-hint`}>{availableCount} {availableCount === 1 ? "category" : "categories"} available{entryType ? ` for ${entryType}.` : " across all entry types."}</p>
       <button type="button" className="category-browse" onClick={browseAll} aria-label="Browse all categories">Browse all</button>
     </div>
     {error && <p className="category-error" role="alert">{error}</p>}
