@@ -28,6 +28,7 @@ const rowToForm = r => ({ id:r.id, entryType:r.entry_type||(r.kind==="Income"?"O
 
 export default function Home() {
   const [session,setSession]=useState(null), [authReady,setAuthReady]=useState(false), [authError,setAuthError]=useState("");
+  const [authMode,setAuthMode]=useState("sign-in"), [authMessage,setAuthMessage]=useState(""), [authBusy,setAuthBusy]=useState(false);
   const [tab,setTab]=useState("dashboard"), [rows,setRows]=useState([]), [accounts,setAccounts]=useState([]), [cashAccounts,setCashAccounts]=useState([]), [parties,setParties]=useState([]), [audits,setAudits]=useState([]), [founders,setFounders]=useState([]), [founderActivity,setFounderActivity]=useState([]), [companyPerformance,setCompanyPerformance]=useState(null), [trialBalance,setTrialBalance]=useState([]);
   const [form,setForm]=useState(empty), [filters,setFilters]=useState(blankFilters), [month,setMonth]=useState(new Date().toISOString().slice(0,7)), [status,setStatus]=useState(""), [busy,setBusy]=useState(false);
   const [fiscalPeriods,setFiscalPeriods]=useState([]), [allocations,setAllocations]=useState([]), [allocationForm,setAllocationForm]=useState({periodId:"",profitAfterTax:"",reinvestment:"0",reference:"",notes:"",status:"Draft"});
@@ -38,12 +39,43 @@ export default function Home() {
   useEffect(()=>{
     let active=true;
     if(!supabase){setAuthError("Supabase environment variables are missing.");setAuthReady(true);return;}
+    const url=new URL(window.location.href), fragment=new URLSearchParams(url.hash.slice(1));
+    const recovering=url.searchParams.get("reset-password")==="1"||fragment.get("type")==="recovery";
+    const linkError=fragment.get("error_description")||url.searchParams.get("error_description")||fragment.get("error")||url.searchParams.get("error");
+    if(recovering)setAuthMode("update-password");
+    if(linkError){setAuthMode("forgot-password");setAuthError("This password reset link is invalid or has expired. Request a new link below.");clearRecoveryUrl();}
+    function acceptSession(current,event){
+      if(!active)return;
+      if(event==="PASSWORD_RECOVERY"){
+        const recoveryUrl=new URL(window.location.href);
+        recoveryUrl.searchParams.set("reset-password","1");
+        window.history.replaceState(null,"",recoveryUrl);
+        setAuthMode("update-password");
+        setAuthError("");
+      }
+      if(current&&!allowedStaff.includes(current.user.email?.toLowerCase())){
+        setAuthError("This account is not authorized for nZO company books.");
+        setSession(null);
+        setAuthMode("sign-in");
+        clearRecoveryUrl();
+        // Auth methods must run after the auth-state callback releases its lock.
+        setTimeout(()=>{if(active)supabase.auth.signOut({scope:"local"})},0);
+      }else{
+        setSession(current);
+        if(new URL(window.location.href).searchParams.get("reset-password")==="1"&&!current){
+          setAuthMode("forgot-password");
+          setAuthError("This password reset link is invalid or has expired. Request a new link below.");
+          clearRecoveryUrl();
+        }
+      }
+      setAuthReady(true);
+    }
     const timeout=setTimeout(()=>{if(active){setAuthError("Authentication took too long. Check the Supabase connection and refresh.");setAuthReady(true)}},5000);
-    supabase.auth.getSession().then(({data,error})=>{if(!active)return;clearTimeout(timeout);if(error)setAuthError(error.message);const current=data?.session||null;if(current&&!allowedStaff.includes(current.user.email?.toLowerCase())){setAuthError("This account is not authorized for nZO company books.");supabase.auth.signOut();setSession(null)}else setSession(current);setAuthReady(true)}).catch(error=>{if(active){clearTimeout(timeout);setAuthError(error.message);setAuthReady(true)}});
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{if(active){if(s&&!allowedStaff.includes(s.user.email?.toLowerCase())){setAuthError("This account is not authorized for nZO company books.");supabase.auth.signOut();setSession(null)}else setSession(s);setAuthReady(true)}});
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((event,current)=>{if(active){clearTimeout(timeout);acceptSession(current,event)}});
+    supabase.auth.getSession().then(({data,error})=>{if(!active)return;clearTimeout(timeout);acceptSession(data?.session||null);if(error)setAuthError(error.message)}).catch(error=>{if(active){clearTimeout(timeout);setAuthError(error.message);setAuthReady(true)}});
     return()=>{active=false;clearTimeout(timeout);subscription.unsubscribe()};
   },[]);
-  useEffect(()=>{ if(session) loadAll(); },[session]);
+  useEffect(()=>{ if(session&&authMode==="sign-in") loadAll(); },[session,authMode]);
 
   async function loadAll(){
     setBusy(true); setStatus("Loading company books…");
@@ -76,7 +108,51 @@ export default function Home() {
   const reportRows=useMemo(()=>posted.filter(r=>{if(reportConfig.type==="Monthly")return r.transaction_date.startsWith(month);if(reportConfig.type==="Daily")return r.transaction_date===reportConfig.date;if(reportConfig.type==="Financial Year"){const p=fiscalPeriods.find(x=>x.id===(reportConfig.periodId||fiscalPeriods[0]?.id));return p&&r.transaction_date>=p.starts_on&&r.transaction_date<=p.ends_on}if(reportConfig.type==="Director-wise"){const person=r.paid_by==="Pradeep"?"Wicky":r.paid_by;return person===reportConfig.director&&(!reportConfig.from||r.transaction_date>=reportConfig.from)&&(!reportConfig.to||r.transaction_date<=reportConfig.to)}return true}),[posted,reportConfig,month,fiscalPeriods]);
   const viewedReportStats=calc(reportRows), viewedReportSplit=splitStats(reportRows);
 
-  async function signIn(e){e.preventDefault();setAuthError("");const fd=new FormData(e.currentTarget),email=String(fd.get("email")).trim().toLowerCase();if(!allowedStaff.includes(email)){setAuthError("This email is not authorized for nZO company books.");return}const {error}=await supabase.auth.signInWithPassword({email,password:fd.get("password")});if(error)setAuthError(error.message)}
+  function clearRecoveryUrl(){
+    const url=new URL(window.location.href);
+    url.searchParams.delete("reset-password");
+    for(const key of ["error","error_code","error_description"])url.searchParams.delete(key);
+    url.hash="";
+    window.history.replaceState(null,"",url);
+  }
+  function changeAuthMode(mode){setAuthMode(mode);setAuthError("");setAuthMessage("");if(mode==="sign-in")clearRecoveryUrl()}
+  async function submitAuth(e){
+    e.preventDefault();
+    if(authBusy)return;
+    setAuthError("");setAuthMessage("");
+    const fd=new FormData(e.currentTarget);
+    if(!supabase){setAuthError("Supabase environment variables are missing.");return}
+    if(authMode==="update-password"){
+      const password=String(fd.get("password")||"");
+      if(password.length<8){setAuthError("Use at least 8 characters for your new password.");return}
+      if(password!==fd.get("confirmPassword")){setAuthError("The passwords do not match.");return}
+      if(!session){setAuthError("Your reset session has expired. Request a new password reset link.");setAuthMode("forgot-password");clearRecoveryUrl();return}
+      setAuthBusy(true);
+      try{
+        const {error}=await supabase.auth.updateUser({password});
+        if(error)throw error;
+        clearRecoveryUrl();setAuthMode("password-updated");
+      }catch(error){setAuthError(error.message||"Unable to update your password. Please try again.")}
+      finally{setAuthBusy(false)}
+      return;
+    }
+    const email=String(fd.get("email")||"").trim().toLowerCase();
+    if(!allowedStaff.includes(email)){setAuthError("This email is not authorized for nZO company books.");return}
+    setAuthBusy(true);
+    try{
+      if(authMode==="forgot-password"){
+        const redirectTo=new URL(window.location.pathname,window.location.origin);
+        redirectTo.searchParams.set("reset-password","1");
+        const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:redirectTo.toString()});
+        if(error)throw error;
+        setAuthMessage("If an account exists for this email, a password reset link has been sent. Check your inbox and spam folder.");
+      }else{
+        const {error}=await supabase.auth.signInWithPassword({email,password:fd.get("password")});
+        if(error)throw error;
+      }
+    }catch(error){setAuthError(error.message||"Unable to connect. Please try again.")}
+    finally{setAuthBusy(false)}
+  }
   async function save(e){e.preventDefault();setBusy(true);const kind=entryTypes[form.entryType]?.kind||form.kind;const payload={...(form.id&&{id:form.id}),entry_type:form.entryType,kind,transaction_date:form.date,category:accounts.find(a=>a.code===form.accountCode)?.name||"Other",account_code:form.accountCode,cash_account_id:form.cashAccountId||null,counterparty_id:form.counterpartyId||null,payment_method:form.paymentMethod,paid_by:form.paidBy,amount:Number(form.amount),tax_amount:Number(form.taxAmount||0),description:form.description,reference_no:form.referenceNo,proof_url:form.proofUrl,notes:form.notes,status:form.status,updated_by:session.user.id,...(!form.id&&{created_by:session.user.id})};const {error}=form.id?await supabase.from("transactions").update(payload).eq("id",form.id):await supabase.from("transactions").insert(payload);if(error)setStatus(`Save failed: ${error.message}`);else{setForm(empty);setTab("ledger");await loadAll()}setBusy(false)}
   async function voidEntry(r){const confirmed=confirm(`Are you sure you want to delete ${r.id}?\n\n${r.description}\n${money.format(r.amount)}\n\nThe accounting journal will be reversed and the audit history will be retained.`);if(!confirmed)return;setBusy(true);const {data,error}=await supabase.from("transactions").delete().eq("id",r.id).select("id");if(error)setStatus(`Delete failed: ${error.message}`);else if(!data?.length)setStatus(`Delete failed: ${r.id} was not removed. Please refresh and try again.`);else{setStatus(`${r.id} deleted. Journal reversed and audit retained.`);await loadAll()}setBusy(false)}
   function exportCsv(){const head=["ID","Date","Status","Kind","Account","Description","Reference","Amount","Tax","Payment Method"];const body=filtered.map(r=>[r.id,r.transaction_date,r.status,r.kind,r.account_code,r.description,r.reference_no,r.amount,r.tax_amount,r.payment_method]);const csv=[head,...body].map(x=>x.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=`nzo-ledger-${new Date().toISOString().slice(0,10)}.csv`;a.click()}
@@ -88,7 +164,7 @@ export default function Home() {
   async function deleteSettlement(s){const confirmed=confirm(`Remove this settlement?\n\n${s.from_founder} paid ${s.to_founder} ${money.format(s.amount)} on ${s.settlement_date}`);if(!confirmed)return;setBusy(true);const {error}=await supabase.from("founder_settlements").delete().eq("id",s.id);if(error)setStatus(`Delete failed: ${error.message}`);else{setStatus("Settlement removed");await loadAll()}setBusy(false)}
 
   if(!authReady)return <div className="splash">Opening secure company books…</div>;
-  if(!session)return <Auth signIn={signIn} error={authError}/>;
+  if(!session||authMode!=="sign-in")return <Auth mode={authMode} submit={submitAuth} changeMode={changeAuthMode} error={authError} message={authMessage} busy={authBusy}/>;
   const nav=[["dashboard","Overview"],["new","New entry"],["ledger","General ledger"],["reports","Reports"],["founders","Founders"],["accounts","Chart of accounts"],["audit","Audit trail"]];
   return <div className="app-shell"><aside className="sidebar"><div className="brand"><img className="ep-logo" src="/logo.png" alt="Entertain Passport"/><strong>Business Administration</strong><small>nZO Innovations · Internal</small></div><nav>{nav.map(([id,label])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}>{label}</button>)}</nav><div className="user"><small>Signed in</small><span>{session.user.email}</span><button onClick={()=>supabase.auth.signOut()}>Sign out</button></div></aside><main className="workspace"><header><div><p className="eyebrow">Entertain Passport · Company books</p><h1>{nav.find(n=>n[0]===tab)?.[1]}</h1></div><div className="sync"><i className={busy?"busy":""}/>{status}</div></header>
     {tab==="dashboard"&&<><section className="metric-grid"><Metric label="Revenue" value={money.format(stats.income)} tone="green"/><Metric label="Operating expenses" value={money.format(stats.expense)} tone="red"/><Metric label="Net cash result" value={money.format(stats.net)} tone={stats.net>=0?"green":"red"}/><Metric label="Posted entries" value={stats.count}/></section><SplitPanel data={split} title="50/50 founder allocation · All time"/><section className="two-col"><Panel title="This month" action={<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/>}><div className="mini-stats"><span>Income <b>{money.format(monthlyStats.income)}</b></span><span>Expense <b>{money.format(monthlyStats.expense)}</b></span><span>Net <b>{money.format(monthlyStats.net)}</b></span></div></Panel><Panel title="Financial controls"><ul className="control-list"><li><b>Supabase Auth</b><span>Active staff access</span></li><li><b>Row Level Security</b><span>Authenticated policies</span></li><li><b>Audit trail</b><span>Insert, edit and void history</span></li><li><b>Currency</b><span>LKR · 2 decimal places</span></li></ul></Panel></section><Panel title="Recent activity"><LedgerTable rows={posted.slice(0,6)} accounts={accounts} edit={r=>{setForm(rowToForm(r));setTab("new")}} voidEntry={voidEntry}/></Panel></>}
@@ -102,7 +178,25 @@ export default function Home() {
   </main></div>;
 }
 
-function Auth({signIn,error}){return <div className="auth-page"><section className="auth-story"><img className="hero-logo" src="/logo.png" alt="Entertain Passport"/><p className="eyebrow">nZO Innovations</p><h1>Company books,<br/>under control.</h1><p>Internal administration and accounting for the company operating Entertain Passport.</p><div className="auth-points"><span>General ledger</span><span>Cash oversight</span><span>Audit-ready</span></div></section><form className="auth-card" onSubmit={signIn}><img className="logo-mark" src="/logo.png" alt="Entertain Passport"/><h2>Staff sign in</h2><p>Entertain Passport internal administration</p><Field label="Email"><input required type="email" name="email" autoComplete="email"/></Field><Field label="Password"><input required type="password" name="password" autoComplete="current-password"/></Field><button>Sign in securely</button>{error&&<p className="error">{error}</p>}</form></div>}
+function Auth({mode,submit,changeMode,error,message,busy}){
+  const forgot=mode==="forgot-password", updating=mode==="update-password", complete=mode==="password-updated";
+  return <div className="auth-page"><section className="auth-story"><img className="hero-logo" src="/logo.png" alt="Entertain Passport"/><p className="eyebrow">nZO Innovations</p><h1>Company books,<br/>under control.</h1><p>Internal administration and accounting for the company operating Entertain Passport.</p><div className="auth-points"><span>General ledger</span><span>Cash oversight</span><span>Audit-ready</span></div></section>
+    <form className="auth-card" onSubmit={submit} aria-busy={busy}>
+      <img className="logo-mark" src="/logo.png" alt="Entertain Passport"/>
+      <h2>{forgot?"Reset your password":updating?"Choose a new password":complete?"Password updated":"Staff sign in"}</h2>
+      <p>{forgot?"Enter your staff email and we will send you a password reset link.":updating?"Use at least 8 characters for your new password.":complete?"Your new password is ready. You can now continue to your company books.":"Entertain Passport internal administration"}</p>
+      <fieldset disabled={busy}>
+        {!updating&&!complete&&<Field label="Email"><input required type="email" name="email" autoComplete="email"/></Field>}
+        {!forgot&&!complete&&<Field label={updating?"New password":"Password"}><input key={mode} required minLength={updating?8:undefined} type="password" name="password" autoComplete={updating?"new-password":"current-password"}/></Field>}
+        {updating&&<Field label="Confirm new password"><input required minLength={8} type="password" name="confirmPassword" autoComplete="new-password"/></Field>}
+        {!complete&&<button type="submit">{busy?(forgot?"Sending reset link…":updating?"Updating password…":"Signing in…"):forgot?"Send reset link":updating?"Update password":"Sign in securely"}</button>}
+        {complete?<button type="button" onClick={()=>changeMode("sign-in")}>Continue to company books</button>:<button type="button" className="auth-link" onClick={()=>changeMode(forgot||updating?"sign-in":"forgot-password")}>{forgot?"Back to sign in":updating?"Cancel":"Forgot password?"}</button>}
+      </fieldset>
+      {error&&<p className="error" role="alert">{error}</p>}
+      {message&&<p className="auth-message" role="status">{message}</p>}
+    </form>
+  </div>
+}
 function calc(rows){return rows.reduce((a,r)=>{const n=Number(r.amount),type=r.chart_of_accounts?.account_type;if(type==="Income"||(!type&&r.kind==="Income"))a.income+=n;if(type==="Expense"||(!type&&r.kind==="Expense"))a.expense+=n;a.count++;a.net=a.income-a.expense;return a},{income:0,expense:0,net:0,count:0})}
 function splitStats(rows,settlements=[]){const s=rows.reduce((a,r)=>{const n=Number(r.amount||0),person=r.paid_by==="Pradeep"?"Wicky":r.paid_by;if(r.kind==="Expense"){a.expense+=n;if(person==="Pasindu")a.pasinduPaid+=n;if(person==="Wicky")a.wickyPaid+=n}else if(r.kind==="Income"){a.income+=n;if(person==="Pasindu")a.pasinduReceived+=n;if(person==="Wicky")a.wickyReceived+=n}return a},{expense:0,income:0,pasinduPaid:0,wickyPaid:0,pasinduReceived:0,wickyReceived:0});s.expenseShare=s.expense/2;s.incomeShare=s.income/2;s.pasinduExpensePosition=s.pasinduPaid-s.expenseShare;s.wickyExpensePosition=s.wickyPaid-s.expenseShare;s.pasinduIncomePosition=s.incomeShare-s.pasinduReceived;s.wickyIncomePosition=s.incomeShare-s.wickyReceived;const personalIncome=s.pasinduReceived+s.wickyReceived;const rawSettlement=s.pasinduPaid-s.expenseShare-s.pasinduReceived+personalIncome/2;const netSettledToPasindu=settlements.reduce((n,x)=>n+(x.to_founder==="Pasindu"?Number(x.amount):x.from_founder==="Pasindu"?-Number(x.amount):0),0);s.netSettledToPasindu=netSettledToPasindu;s.pasinduSettlement=rawSettlement-netSettledToPasindu;s.wickySettlement=-s.pasinduSettlement;return s}
 function SplitPanel({data,title}){const creditor=data.pasinduSettlement>0?"Pasindu":data.pasinduSettlement<0?"Wicky":"",debtor=creditor==="Pasindu"?"Wicky":creditor==="Wicky"?"Pasindu":"",due=Math.abs(data.pasinduSettlement);return <Panel title={title} action={<span className="share-badge">50% : 50%</span>}><div className="split-grid"><div><span>Total expenses</span><b>{money.format(data.expense)}</b></div><div><span>Each founder expense share</span><b>{money.format(data.expenseShare)}</b></div><div><span>Pasindu actually paid</span><b>{money.format(data.pasinduPaid)}</b></div><div><span>Wicky actually paid</span><b>{money.format(data.wickyPaid)}</b></div><div><span>Each founder income allocation</span><b>{money.format(data.incomeShare)}</b></div><div className="settlement"><span>Balancing position</span><b>{creditor?`${debtor} owes ${creditor} ${money.format(due)}`:"Balanced"}</b></div></div><p className="allocation-note">This is the founders’ internal 50/50 management allocation. Company statutory revenue and expenses remain recorded at 100% in nZO’s books.{!!data.netSettledToPasindu&&` LKR ${money.format(Math.abs(data.netSettledToPasindu))} already settled directly between founders is netted into the balancing position above.`}</p></Panel>}
