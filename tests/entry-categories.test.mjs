@@ -45,3 +45,24 @@ test("empty search shows active supported categories, with no matches handled sa
   assert.deepEqual(getEntryTypeChoices(accounts[4]), []);
   assert.deepEqual(getEntryTypeChoices({ account_type: "Unknown" }), []);
 });
+
+test("selecting an entry type scopes categories and removes ambiguity", () => {
+  assert.deepEqual(codes("", { entryType: "Operating Expense" }), ["5000", "5010"]);
+  assert.deepEqual(codes("", { entryType: "Operating Income" }), ["4050"]);
+  assert.deepEqual(codes("", { entryType: "Cash / Bank Transfer" }), ["1500"]);
+  const { results } = searchCategories(accounts, "cloud", { entryType: "Operating Expense" });
+  assert.deepEqual(results[0].choices, ["Operating Expense"]);
+});
+
+test("word and regex searches stay within the selected entry type", () => {
+  assert.deepEqual(codes("supabase", { entryType: "Operating Income" }), []);
+  assert.deepEqual(codes("DOMAIN|NFC", { regex: true, entryType: "Operating Expense" }), ["5000"]);
+  assert.deepEqual(codes("DOMAIN|NFC", { regex: true, entryType: "Operating Income" }), ["4050"]);
+});
+
+test("clearing the entry type restores all categories and compatible choices", () => {
+  assert.deepEqual(codes("", { entryType: "" }), ["5000", "5010", "4050", "1500"]);
+  const { results } = searchCategories(accounts, "sales", { entryType: "" });
+  assert.deepEqual(results[0].choices, ["Operating Income", "Accounting Adjustment"]);
+  assert.deepEqual(codes("", { entryType: "Unknown" }), []);
+});
