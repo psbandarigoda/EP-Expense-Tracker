@@ -13,6 +13,7 @@ export default function CategoryPicker({ accounts, value, entryType, onSelect })
   const selected = accounts.find(account => account.code === value);
   const pending = accounts.find(account => account.code === pendingCode);
   const { results, error } = useMemo(() => searchCategories(accounts, query, { regex }), [accounts, query, regex]);
+  const availableCount = useMemo(() => searchCategories(accounts, "").results.length, [accounts]);
   const pendingChoices = getEntryTypeChoices(pending);
   const label = account => `${account.code} · ${account.name}`;
 
@@ -48,10 +49,19 @@ export default function CategoryPicker({ accounts, value, entryType, onSelect })
     setOpen(true);
     if (value) onSelect("", entryType);
   }
+  function browseAll() {
+    setQuery("");
+    setRegex(false);
+    setPendingCode("");
+    setActiveIndex(0);
+    inputRef.current?.focus();
+    setOpen(true);
+  }
   function onKeyDown(event) {
     if (event.key === "Escape") { event.preventDefault(); setOpen(false); return; }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
+      setPendingCode("");
       setOpen(true);
       const last = Math.max(0, results.length - 1);
       setActiveIndex(index => !open ? (event.key === "ArrowDown" ? 0 : last) : event.key === "ArrowDown" ? Math.min(index + 1, last) : Math.max(index - 1, 0));
@@ -72,10 +82,14 @@ export default function CategoryPicker({ accounts, value, entryType, onSelect })
         aria-activedescendant={open && results[activeIndex] ? `${id}-${results[activeIndex].account.code}` : undefined}
         aria-describedby={`${id}-hint`} aria-invalid={error ? true : undefined}
         onFocus={event => { event.currentTarget.select(); if (!pending) setOpen(true); }}
+        onClick={() => { if (!pending) setOpen(true); }}
         onChange={event => search(event.target.value)} onKeyDown={onKeyDown}/>
       <button type="button" className="category-regex" aria-pressed={regex} onClick={() => { setRegex(!regex); setActiveIndex(0); if (!pending) setOpen(true); }} title="Match a regular expression">Regex</button>
     </div>
-    <p className="category-hint" id={`${id}-hint`}>{selected ? `Selected entry type: ${entryType}` : "Search all categories, then choose the matching entry type."}</p>
+    <div className="category-help">
+      <p className="category-hint" id={`${id}-hint`}>{selected ? `Selected entry type: ${entryType}` : `${availableCount} categories available. Search, then choose an entry type.`}</p>
+      <button type="button" className="category-browse" onClick={browseAll} aria-label="Browse all categories">Browse all</button>
+    </div>
     {error && <p className="category-error" role="alert">{error}</p>}
     {open && <div className="category-dropdown">
       <div className="category-result-count" role="status">{results.length} matching {results.length === 1 ? "category" : "categories"}</div>
@@ -88,7 +102,7 @@ export default function CategoryPicker({ accounts, value, entryType, onSelect })
           <span className="category-result-meta">{account.account_type} · {choices.length === 1 ? choices[0] : `${choices.length} entry types — choose next`}</span>
         </button>)}
       </div>
-      {!results.length && <p className="category-no-results">{error ? "Check the regex above, or turn Regex off to search by words." : accounts.length ? "No matching categories. Try another name, account code or word." : "No categories loaded. Check the database connection."}</p>}
+      {!results.length && <div className="category-no-results"><p>{error ? "Check the regex above, or turn Regex off to search by words." : accounts.length ? "No matching categories. Try another name, account code or word." : "No categories loaded. Check the database connection."}</p>{availableCount > 0 && <button type="button" className="category-change" onClick={browseAll}>Show all categories</button>}</div>}
     </div>}
     {pending && <section className="category-entry-choices" aria-label="Choose entry type">
       <h3>Choose entry type</h3>

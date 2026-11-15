@@ -53,6 +53,8 @@ type and search every account type. Multiple words can appear in any order;
 enable **Regex** for patterns such as `domain|cloud` or `^50`. Choose a category,
 then choose its entry type if more than one is supported. The form fills both
 fields together and requires a valid category/type combination before posting.
+Use **Browse all** to reopen the complete category list and clear search or regex
+filters. The picker also shows how many categories are available.
 
 Run `npm test` for the category search and entry-type compatibility checks.
 
