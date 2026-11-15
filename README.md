@@ -6,6 +6,7 @@ Internal company books for **nZO Innovations**, operator of Entertain Passport. 
 
 - Authenticated internal staff access with Supabase Auth and RLS
 - LKR income and expense ledger with draft, posted and void states
+- Search categories by name, code, description or entry type; choose the matching entry type before posting
 - nZO-specific Chart of Accounts covering platform revenue, operating costs, assets and liabilities
 - Cash/bank account, counterparty, reference, tax/WHT and proof tracking
 - Monthly management P&L, account breakdown and CSV export
@@ -46,6 +47,14 @@ Never expose a database password or service-role key as a `NEXT_PUBLIC_` variabl
 npm install
 npm run dev
 ```
+
+For a new entry, start with **Category / subcategory**. Results update as you
+type and search every account type. Multiple words can appear in any order;
+enable **Regex** for patterns such as `domain|cloud` or `^50`. Choose a category,
+then choose its entry type if more than one is supported. The form fills both
+fields together and requires a valid category/type combination before posting.
+
+Run `npm test` for the category search and entry-type compatibility checks.
 
 ## Accounting boundary
 
